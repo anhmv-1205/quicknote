@@ -62,7 +62,7 @@ class MLService {
   }
 
   Future<User?> predict() async {
-    return _searchResult(_predictedData);
+    return await _searchResult(_predictedData);
   }
 
   List _preProcess(CameraImage image, Face faceDetected) {

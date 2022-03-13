@@ -1,17 +1,41 @@
 import 'package:bloc_flutter/bloc/image_cubit.dart';
 import 'package:bloc_flutter/bloc/text_cubit.dart';
 import 'package:bloc_flutter/components/components_layer.dart';
+import 'package:bloc_flutter/database/databse_helper.dart';
+import 'package:bloc_flutter/services/camera_service.dart';
+import 'package:bloc_flutter/services/face_detector_service.dart';
+import 'package:bloc_flutter/services/ml_service.dart';
+import 'package:bloc_flutter/ui/face_auth/face_auth_screen.dart';
 import 'package:bloc_flutter/ui/text_result_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-void main() {
+import 'locator/locator.dart';
+
+void main() async {
+  setupServices();
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+
+  final FaceDetectorService _faceDetectorService =
+  locator<FaceDetectorService>();
+  final CameraService _cameraService = locator<CameraService>();
+  final MLService _mlService = locator<MLService>();
+
+  await _cameraService.initialize();
+  await _mlService.initialize();
+  _faceDetectorService.initialize();
+
+  final user = await DatabaseHelper.instance.queryAllUsers();
+  final isFaceAuth = user.isNotEmpty;
+  runApp(MyApp(
+    isFaceAuth: isFaceAuth,
+  ));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  final bool isFaceAuth;
+
+  const MyApp({Key? key, required this.isFaceAuth}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +52,9 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           primarySwatch: Colors.blue,
         ),
-        home: const MyHomePage(title: 'Flutter Demo Home Page'),
+        home: FaceAuthScreen(
+          isFaceAlready: isFaceAuth,
+        ),
       ),
     );
   }

@@ -55,7 +55,6 @@ class CameraService {
   }
 
   Future<XFile> takePicture() async {
-    await _cameraController.stopImageStream();
     XFile file = await _cameraController.takePicture();
     _imagePath = file.path;
     return file;
