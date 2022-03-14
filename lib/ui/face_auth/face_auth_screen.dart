@@ -36,7 +36,7 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
 
   bool pictureTaken = false;
 
-  bool _initializing = false;
+  bool _initializing = true;
 
   bool _isFaceAlready = false;
 
@@ -56,6 +56,8 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
   @override
   void dispose() {
     _cameraService.dispose();
+    _mlService.dispose();
+    _faceDetectorService.dispose();
     super.dispose();
   }
 
@@ -86,9 +88,7 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
 
       return false;
     } else {
-      await Future.delayed(const Duration(milliseconds: 500));
       await _cameraService.cameraController.stopImageStream();
-      await Future.delayed(const Duration(milliseconds: 200));
       XFile file = await _cameraService.takePicture();
       imagePath = file.path;
 
@@ -113,20 +113,33 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
         if (_faceDetectorService.faces.isNotEmpty) {
           faceDetected = _faceDetectorService.faces.first;
           if (faceDetected != null) {
-            setState(() async {
-              _mlService.setCurrentPrediction(image, faceDetected!);
-              if (_isFaceAlready) {
+            // setState(() async {
+            //   _mlService.setCurrentPrediction(image, faceDetected!);
+            //   if (_isFaceAlready) {
+            //     final currentUser = await _mlService.predict();
+            //     if (currentUser != null) {
+            //       showCheckInOut(currentUser);
+            //     }
+            //   }
+            // });
+
+            _mlService.setCurrentPrediction(image, faceDetected!);
+            if (_isFaceAlready) {
+              try {
                 final currentUser = await _mlService.predict();
                 if (currentUser != null) {
                   showCheckInOut(currentUser);
                 }
+              } catch (e) {
+                print(e);
               }
-            });
+            }
           }
         } else {
-          setState(() {
-            faceDetected = null;
-          });
+          // setState(() {
+          //   faceDetected = null;
+          // });
+          faceDetected == null;
         }
 
         _detectingFaces = false;
@@ -214,8 +227,30 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
 
   void showCheckInOut(User user) {
     // PersistentBottomSheetController bottomSheetController =
-    Scaffold.of(context).showBottomSheet((context) => signSheet(context));
+    // Scaffold.of(context).showBottomSheet((context) => signSheet(context));
     // bottomSheetController.closed.whenComplete(() => _reload());
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        Widget continueButton = TextButton(
+          child: const Text("Tiếp tục"),
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+        );
+
+        // set up the AlertDialog
+        AlertDialog alert = AlertDialog(
+          title: const Text("Thành công"),
+          content: const Text("Nhận diện khuôn mặt thành công"),
+          actions: [
+            continueButton,
+          ],
+        );
+        return alert;
+      },
+    );
   }
 
   signSheet(BuildContext context) {

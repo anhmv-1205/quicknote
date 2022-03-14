@@ -1,9 +1,7 @@
 import 'dart:convert';
 
-import 'package:google_ml_kit/google_ml_kit.dart';
-
 class User {
-  List<Face> modelData;
+  List modelData;
 
   User({
     required this.modelData,

@@ -15,9 +15,9 @@ class MLService {
   late Interpreter _interpreter;
   double threshold = 0.5;
 
-  late List<Face> _predictedData;
+  List<double>? _predictedData;
 
-  List<Face> get predictedData => _predictedData;
+  List<double> get predictedData => _predictedData ?? [];
 
   Future initialize() async {
     try {
@@ -62,10 +62,10 @@ class MLService {
   }
 
   Future<User?> predict() async {
-    return await _searchResult(_predictedData);
+    return await _searchResult(_predictedData ?? []);
   }
 
-  List _preProcess(CameraImage image, Face faceDetected) {
+  List<double> _preProcess(CameraImage image, Face faceDetected) {
     imglib.Image(0, 0);
     imglib.Image croppedImage = _cropFace(image, faceDetected);
     imglib.Image img = imglib.copyResizeCropSquare(croppedImage, 112);
@@ -114,7 +114,7 @@ class MLService {
     List<User> users = await _dbHelper.queryAllUsers();
     double minDist = 999;
     double currDist = 0.0;
-    late User predictedResult;
+    User? predictedResult;
 
     for (User u in users) {
       currDist = _euclideanDistance(u.modelData, predictedData);
