@@ -47,7 +47,12 @@ class FaceDetectorService {
       inputImageData: _firebaseImageMetadata,
     );
 
-    _faces = await _faceDetector.processImage(_firebaseVisionImage);
+    try {
+      _faces = await _faceDetector.processImage(_firebaseVisionImage);
+    } catch (err) {
+
+      print(err);
+    }
     return _faces;
   }
 

@@ -61,7 +61,7 @@ class MLService {
     _predictedData = List.from(output);
   }
 
-  Future<User?> predict() async {
+  Future<bool> predict() async {
     return await _searchResult(_predictedData ?? []);
   }
 
@@ -108,7 +108,7 @@ class MLService {
     return convertedBytes.buffer.asFloat32List();
   }
 
-  Future<User?> _searchResult(List predictedData) async {
+  Future<bool> _searchResult(List predictedData) async {
     DatabaseHelper _dbHelper = DatabaseHelper.instance;
 
     List<User> users = await _dbHelper.queryAllUsers();
@@ -123,7 +123,8 @@ class MLService {
         predictedResult = u;
       }
     }
-    return predictedResult;
+
+    return predictedResult != null;
   }
 
   double _euclideanDistance(List e1, List e2) {

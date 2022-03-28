@@ -4,8 +4,12 @@ import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_ml_kit/google_ml_kit.dart';
 
+import '../../bloc/detect_bloc.dart';
+import '../../bloc/face_auth_bloc.dart';
+import '../../bloc/face_auth_state.dart';
 import '../../components/face_auth_action_button.dart';
 import '../../components/face_painter.dart';
 import '../../database/databse_helper.dart';
@@ -30,26 +34,27 @@ class FaceAuthScreen extends StatefulWidget {
 class FaceAuthScreenState extends State<FaceAuthScreen> {
   String? imagePath;
   Face? faceDetected;
-  Size? imageSize;
+  late Size imageSize;
 
   bool _detectingFaces = false;
 
   bool pictureTaken = false;
 
-  bool _initializing = true;
-
   bool _isFaceAlready = false;
 
   // service injection
-  final FaceDetectorService _faceDetectorService =
-      locator<FaceDetectorService>();
-  final CameraService _cameraService = locator<CameraService>();
-  final MLService _mlService = locator<MLService>();
+  final _faceDetectorService = locator<FaceDetectorService>();
+  final _cameraService = locator<CameraService>();
+  final _mlService = locator<MLService>();
+
+  // bloc
+  late FaceAuthBloc _faceAuthBloc;
+  late DetectBloc _detectBloc;
 
   @override
   void initState() {
     super.initState();
-
+    _initBloc();
     _start();
   }
 
@@ -61,17 +66,23 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
     super.dispose();
   }
 
-  _start() async {
-    DatabaseHelper _dbHelper = DatabaseHelper.instance;
+  void _initBloc() async {
+    _faceAuthBloc = BlocProvider.of<FaceAuthBloc>(context);
+    _detectBloc = BlocProvider.of<DetectBloc>(context);
+  }
 
-    List<User> users = await _dbHelper.queryAllUsers();
+  _start() async {
+    _faceAuthBloc.loading();
+
+    final _dbHelper = DatabaseHelper.instance;
+    final users = await _dbHelper.queryAllUsers();
     _isFaceAlready = widget.isFaceAlready && users.isNotEmpty;
 
-    // await _cameraService.initialize();
-    // await _mlService.initialize();
-    // _faceDetectorService.initialize();
-    setState(() => _initializing = false);
+    await _cameraService.initialize();
+    await _mlService.initialize();
+    _faceDetectorService.initialize();
 
+    _faceAuthBloc.detecting();
     _frameFaces();
   }
 
@@ -91,11 +102,8 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
       await _cameraService.cameraController.stopImageStream();
       XFile file = await _cameraService.takePicture();
       imagePath = file.path;
-
-      setState(() {
-        pictureTaken = true;
-      });
-
+      print(imagePath);
+      _faceAuthBloc.detected(imagePath ?? "");
       return true;
     }
   }
@@ -105,43 +113,30 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
 
     _cameraService.cameraController.startImageStream((image) async {
       if (_detectingFaces) return;
-
       _detectingFaces = true;
+
+      print("Image detected: $image");
 
       try {
         await _faceDetectorService.detectFacesFromImage(image);
         if (_faceDetectorService.faces.isNotEmpty) {
           faceDetected = _faceDetectorService.faces.first;
           if (faceDetected != null) {
-            // setState(() async {
-            //   _mlService.setCurrentPrediction(image, faceDetected!);
-            //   if (_isFaceAlready) {
-            //     final currentUser = await _mlService.predict();
-            //     if (currentUser != null) {
-            //       showCheckInOut(currentUser);
-            //     }
-            //   }
-            // });
-
             _mlService.setCurrentPrediction(image, faceDetected!);
+
             if (_isFaceAlready) {
-              try {
-                final currentUser = await _mlService.predict();
-                if (currentUser != null) {
-                  showCheckInOut(currentUser);
-                }
-              } catch (e) {
-                print(e);
+              final isFaceCorrectly = await _mlService.predict();
+              if (isFaceCorrectly) {
+                await onShot();
+                _detectBloc.authenticate(faceDetected!);
+                return;
               }
             }
           }
         } else {
-          // setState(() {
-          //   faceDetected = null;
-          // });
           faceDetected == null;
         }
-
+        _detectBloc.detected(faceDetected);
         _detectingFaces = false;
       } catch (e) {
         print(e);
@@ -156,64 +151,79 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
 
-    late Widget body;
-    if (_initializing) {
-      body = const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (!_initializing && pictureTaken && imagePath != null) {
-      body = SizedBox(
-        width: width,
-        height: height,
-        child: Transform(
-            alignment: Alignment.center,
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: Image.file(File(imagePath!)),
-            ),
-            transform: Matrix4.rotationY(mirror)),
-      );
-    }
-
-    if (!_initializing && !pictureTaken) {
-      body = Transform.scale(
-        scale: 1.0,
-        child: AspectRatio(
-          aspectRatio: MediaQuery.of(context).size.aspectRatio,
-          child: OverflowBox(
-            alignment: Alignment.center,
-            child: FittedBox(
-              fit: BoxFit.fitHeight,
-              child: SizedBox(
-                width: width,
-                height:
-                    width * _cameraService.cameraController.value.aspectRatio,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    CameraPreview(_cameraService.cameraController),
-                    if (faceDetected != null && imageSize != null)
-                      CustomPaint(
-                        painter: FacePainter(
-                          face: faceDetected!,
-                          imageSize: imageSize!,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       body: Stack(
         children: [
-          body,
+          BlocBuilder<FaceAuthBloc, FaceAuthState>(
+            bloc: _faceAuthBloc,
+            builder: (context, state) {
+              if (state is FaceDetecting) {
+                return Transform.scale(
+                  scale: 1.0,
+                  child: AspectRatio(
+                    aspectRatio: MediaQuery.of(context).size.aspectRatio,
+                    child: OverflowBox(
+                      alignment: Alignment.center,
+                      child: FittedBox(
+                        fit: BoxFit.fitHeight,
+                        child: SizedBox(
+                          width: width,
+                          height: width *
+                              _cameraService.cameraController.value.aspectRatio,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: <Widget>[
+                              CameraPreview(_cameraService.cameraController),
+                              BlocBuilder<DetectBloc, DetectState>(
+                                builder: (context, state) {
+                                  if (state is Detected) {
+                                    return CustomPaint(
+                                      painter: FacePainter(
+                                        face: state.face,
+                                        imageSize: imageSize,
+                                      ),
+                                    );
+                                  }
+                                  return const SizedBox();
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              } else if (state is FaceDetected) {
+                return SizedBox(
+                  width: width,
+                  height: height,
+                  child: Transform(
+                      alignment: Alignment.center,
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: Image.file(File(state.file)),
+                      ),
+                      transform: Matrix4.rotationY(mirror)),
+                );
+              }
+
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            },
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: BlocBuilder<DetectBloc, DetectState>(
+              builder: (context, state) {
+                if (state is Detected) {
+                  return const Text("Face Found");
+                }
+                return const Text("Face Not Found");
+              },
+            ),
+          ),
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -226,14 +236,10 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
   }
 
   void showCheckInOut(User user) {
-    // PersistentBottomSheetController bottomSheetController =
-    // Scaffold.of(context).showBottomSheet((context) => signSheet(context));
-    // bottomSheetController.closed.whenComplete(() => _reload());
-
     showDialog(
       context: context,
       builder: (context) {
-        Widget continueButton = TextButton(
+        final continueButton = TextButton(
           child: const Text("Tiếp tục"),
           onPressed: () {
             Navigator.of(context).pop();
@@ -241,7 +247,7 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
         );
 
         // set up the AlertDialog
-        AlertDialog alert = AlertDialog(
+        final alert = AlertDialog(
           title: const Text("Thành công"),
           content: const Text("Nhận diện khuôn mặt thành công"),
           actions: [

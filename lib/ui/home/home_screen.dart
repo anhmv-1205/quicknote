@@ -2,6 +2,8 @@ import 'package:bloc_flutter/ui/face_auth/face_auth_screen.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
+  const HomeScreen({Key? key}) : super(key: key);
+
   @override
   State<StatefulWidget> createState() => _HomeScreen();
 }

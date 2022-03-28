@@ -1,5 +1,6 @@
+import 'package:bloc_flutter/bloc/detect_bloc.dart';
+import 'package:bloc_flutter/bloc/face_auth_bloc.dart';
 import 'package:bloc_flutter/bloc/image_cubit.dart';
-import 'package:bloc_flutter/bloc/text_cubit.dart';
 import 'package:bloc_flutter/components/components_layer.dart';
 import 'package:bloc_flutter/database/databse_helper.dart';
 import 'package:bloc_flutter/services/camera_service.dart';
@@ -16,17 +17,17 @@ void main() async {
   setupServices();
   WidgetsFlutterBinding.ensureInitialized();
 
-  final FaceDetectorService _faceDetectorService =
-  locator<FaceDetectorService>();
-  final CameraService _cameraService = locator<CameraService>();
-  final MLService _mlService = locator<MLService>();
-
-  await _cameraService.initialize();
-  await _mlService.initialize();
-  _faceDetectorService.initialize();
+  // final _faceDetectorService = locator<FaceDetectorService>();
+  // final _cameraService = locator<CameraService>();
+  // final _mlService = locator<MLService>();
+  //
+  // await _cameraService.initialize();
+  // await _mlService.initialize();
+  // _faceDetectorService.initialize();
 
   final user = await DatabaseHelper.instance.queryAllUsers();
   final isFaceAuth = user.isNotEmpty;
+
   runApp(MyApp(
     isFaceAuth: isFaceAuth,
   ));
@@ -41,11 +42,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider(create: (context) => ImageCubit()),
-        BlocProvider(
-          create: (context) => TextRecognizedCubit()
-            ..imageCubit = BlocProvider.of<ImageCubit>(context),
-        ),
+        // BlocProvider(create: (context) => ImageCubit()),
+        // BlocProvider(
+        //   create: (context) => TextRecognizedCubit()
+        //     ..imageCubit = BlocProvider.of<ImageCubit>(context),
+        // ),
+        BlocProvider(create: (context) => FaceAuthBloc()),
+        BlocProvider(create: (context) => DetectBloc()),
       ],
       child: MaterialApp(
         title: 'Flutter Demo',
