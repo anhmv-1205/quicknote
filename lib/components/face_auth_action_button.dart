@@ -38,27 +38,6 @@ class _FaceAuthActionButtonState extends State<FaceAuthActionButton> {
       bool faceDetected = await widget.onPressed();
       if (faceDetected) {
         await _saveFaceData();
-        showDialog(
-          context: context,
-          builder: (context) {
-            Widget continueButton = TextButton(
-              child: const Text("Tiếp tục"),
-              onPressed: () {
-                _gotoHomeScreen();
-              },
-            );
-
-            // set up the AlertDialog
-            AlertDialog alert = AlertDialog(
-              title: const Text("Thành công"),
-              content: const Text("Đăng kí khuôn mặt thành công"),
-              actions: [
-                continueButton,
-              ],
-            );
-            return alert;
-          },
-        );
       }
     } catch (e) {
       print(e);
@@ -105,13 +84,5 @@ class _FaceAuthActionButtonState extends State<FaceAuthActionButton> {
   @override
   void dispose() {
     super.dispose();
-  }
-
-  void _gotoHomeScreen() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => HomeScreen(),
-      ),
-    );
   }
 }

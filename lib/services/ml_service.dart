@@ -33,8 +33,9 @@ class MLService {
       } else if (Platform.isIOS) {
         delegate = GpuDelegate(
           options: GpuDelegateOptions(
-              allowPrecisionLoss: true,
-              waitType: TFLGpuDelegateWaitType.active),
+            allowPrecisionLoss: true,
+            waitType: TFLGpuDelegateWaitType.active,
+          ),
         );
       }
       var interpreterOptions = InterpreterOptions()..addDelegate(delegate);

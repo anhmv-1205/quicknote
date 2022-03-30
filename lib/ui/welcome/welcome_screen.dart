@@ -1,4 +1,5 @@
 import 'package:bloc_flutter/common/app_colors.dart';
+import 'package:bloc_flutter/ui/face_auth/face_auth_screen.dart';
 import 'package:flutter/material.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -28,7 +29,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 height: 96,
               ),
               InkWell(
-                onTap: () {},
+                onTap: () {
+                  _gotoAuthenticationScreen(true);
+                },
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
@@ -66,7 +69,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               InkWell(
                 highlightColor: Colors.transparent,
                 hoverColor: AppColors.primary,
-                onTap: () {},
+                onTap: () {
+                  _gotoAuthenticationScreen(false);
+                },
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
@@ -108,6 +113,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   }
 
   _gotoAuthenticationScreen(bool isLogin) {
-    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FaceAuthScreen(isFaceAlready: isLogin),
+      ),
+    );
   }
 }

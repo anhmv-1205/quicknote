@@ -2,7 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:bloc_flutter/bloc/count_down_bloc.dart';
+import 'package:bloc_flutter/common/app_colors.dart';
+import 'package:bloc_flutter/ui/home/home_screen.dart';
+import 'package:bloc_flutter/ui/welcome/welcome_screen.dart';
 import 'package:camera/camera.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_ml_kit/google_ml_kit.dart';
@@ -14,7 +19,6 @@ import '../../components/face_auth_action_button.dart';
 import '../../components/face_painter.dart';
 import '../../database/databse_helper.dart';
 import '../../locator/locator.dart';
-import '../../model/user_model.dart';
 import '../../services/camera_service.dart';
 import '../../services/face_detector_service.dart';
 import '../../services/ml_service.dart';
@@ -36,11 +40,7 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
   Face? faceDetected;
   late Size imageSize;
 
-  bool _detectingFaces = false;
-
-  bool pictureTaken = false;
-
-  bool _isFaceAlready = false;
+  var _detectingFaces = false;
 
   // service injection
   final _faceDetectorService = locator<FaceDetectorService>();
@@ -50,12 +50,37 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
   // bloc
   late FaceAuthBloc _faceAuthBloc;
   late DetectBloc _detectBloc;
+  late CountDownBloc _countDownBloc;
 
   @override
   void initState() {
     super.initState();
     _initBloc();
     _start();
+  }
+
+  void _initBloc() async {
+    _faceAuthBloc = BlocProvider.of<FaceAuthBloc>(context);
+    _detectBloc = BlocProvider.of<DetectBloc>(context);
+    _countDownBloc = BlocProvider.of<CountDownBloc>(context);
+  }
+
+  _start() async {
+    _faceAuthBloc.loading();
+
+    final _dbHelper = DatabaseHelper.instance;
+    final users = await _dbHelper.queryAllUsers();
+
+    await _cameraService.initialize();
+    await _mlService.initialize();
+    _faceDetectorService.initialize();
+
+    _faceAuthBloc.detecting();
+
+    if (widget.isFaceAlready) {
+      _countDownBloc.startTimer();
+    }
+    _frameFaces();
   }
 
   @override
@@ -66,44 +91,33 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
     super.dispose();
   }
 
-  void _initBloc() async {
-    _faceAuthBloc = BlocProvider.of<FaceAuthBloc>(context);
-    _detectBloc = BlocProvider.of<DetectBloc>(context);
-  }
-
-  _start() async {
-    _faceAuthBloc.loading();
-
-    final _dbHelper = DatabaseHelper.instance;
-    final users = await _dbHelper.queryAllUsers();
-    _isFaceAlready = widget.isFaceAlready && users.isNotEmpty;
-
-    await _cameraService.initialize();
-    await _mlService.initialize();
-    _faceDetectorService.initialize();
-
-    _faceAuthBloc.detecting();
-    _frameFaces();
-  }
-
   Future<bool> onShot() async {
     if (faceDetected == null) {
-      showDialog(
-        context: context,
-        builder: (context) {
-          return const AlertDialog(
-            content: Text('No face detected!'),
-          );
-        },
+      _showMessage(
+        'No face detected!',
       );
-
       return false;
     } else {
       await _cameraService.cameraController.stopImageStream();
       XFile file = await _cameraService.takePicture();
       imagePath = file.path;
-      print(imagePath);
       _faceAuthBloc.detected(imagePath ?? "");
+
+      if (!widget.isFaceAlready) {
+        _showSuccessfulDetectedDialog();
+      } else {
+        _showMessage(
+          "Face authenticated!",
+          content: "Go to home screen",
+          action: () {
+            Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const HomeScreen()),
+                ModalRoute.withName("/Home"));
+          },
+        );
+      }
+
       return true;
     }
   }
@@ -115,8 +129,6 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
       if (_detectingFaces) return;
       _detectingFaces = true;
 
-      print("Image detected: $image");
-
       try {
         await _faceDetectorService.detectFacesFromImage(image);
         if (_faceDetectorService.faces.isNotEmpty) {
@@ -124,11 +136,11 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
           if (faceDetected != null) {
             _mlService.setCurrentPrediction(image, faceDetected!);
 
-            if (_isFaceAlready) {
+            if (widget.isFaceAlready) {
               final isFaceCorrectly = await _mlService.predict();
               if (isFaceCorrectly) {
-                await onShot();
                 _detectBloc.authenticate(faceDetected!);
+                await onShot();
                 return;
               }
             }
@@ -139,7 +151,6 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
         _detectBloc.detected(faceDetected);
         _detectingFaces = false;
       } catch (e) {
-        print(e);
         _detectingFaces = false;
       }
     });
@@ -155,7 +166,7 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
       body: Stack(
         children: [
           BlocBuilder<FaceAuthBloc, FaceAuthState>(
-            bloc: _faceAuthBloc,
+            // bloc: _faceAuthBloc,
             builder: (context, state) {
               if (state is FaceDetecting) {
                 return Transform.scale(
@@ -224,10 +235,39 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
               },
             ),
           ),
+          if (widget.isFaceAlready)
+            Align(
+              alignment: Alignment.center,
+              child: BlocConsumer<CountDownBloc, CountDownState>(
+                  listenWhen: (previous, current) {
+                return previous != current;
+              }, listener: (context, state) {
+                if (state is Finish) {
+                  _showMessage("Face not found",
+                      content: "Back to welcome screen", action: () {
+                    Navigator.pop(context);
+                    Navigator.pop(context);
+                  });
+                }
+              }, builder: (context, state) {
+                if (state is Counting) {
+                  return Text(
+                    state.count.toString(),
+                    style: TextStyle(
+                      color: AppColors.primary.withOpacity(0.5),
+                      fontSize: 64,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                } else {
+                  return const SizedBox();
+                }
+              }),
+            )
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: !_isFaceAlready
+      floatingActionButton: !widget.isFaceAlready
           ? FaceAuthActionButton(
               onPressed: onShot,
             )
@@ -235,52 +275,45 @@ class FaceAuthScreenState extends State<FaceAuthScreen> {
     );
   }
 
-  void showCheckInOut(User user) {
+  void _showSuccessfulDetectedDialog() {
     showDialog(
       context: context,
-      builder: (context) {
-        final continueButton = TextButton(
-          child: const Text("Tiếp tục"),
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-        );
-
-        // set up the AlertDialog
-        final alert = AlertDialog(
-          title: const Text("Thành công"),
-          content: const Text("Nhận diện khuôn mặt thành công"),
-          actions: [
-            continueButton,
-          ],
-        );
-        return alert;
-      },
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text("Face detected!"),
+        content: const Text("Come back the welcome screen to login"),
+        actions: <Widget>[
+          CupertinoDialogAction(
+              textStyle: const TextStyle(color: Colors.red),
+              isDefaultAction: true,
+              onPressed: () async {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (BuildContext ctx) => const WelcomeScreen(),
+                  ),
+                );
+              },
+              child: const Text("Yes")),
+        ],
+      ),
     );
   }
 
-  signSheet(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              const Text("16:50"),
-              Column(
-                children: const [
-                  Text("Thứ năm, 25/10/2020"),
-                  Text("16:50"),
-                ],
-              ),
-            ],
+  void _showMessage(String title, {String? content, Function? action}) {
+    showDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: Text(title),
+        content: content != null ? Text(content) : null,
+        actions: <Widget>[
+          CupertinoDialogAction(
+            textStyle: const TextStyle(color: AppColors.primary),
+            isDefaultAction: true,
+            onPressed: () async {
+              action?.call();
+            },
+            child: const Text("Yes"),
           ),
-          ElevatedButton(
-            onPressed: () {},
-            child: Text("CHẤM CÔNG RA VỀ"),
-          )
         ],
       ),
     );
